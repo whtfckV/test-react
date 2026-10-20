@@ -1,50 +1,101 @@
-# React + TypeScript + Vite
+# Green API Chat
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+Мини-клиент Telegram на базе [Green API](https://green-api.com). Интерфейс похож на Telegram: слева список чатов, справа открытый чат.
 
-Currently, two official plugins are available:
+**Демо:** https://whtfckv.github.io/test-react/
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react/README.md) uses [Babel](https://babeljs.io/) for Fast Refresh
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react-swc) uses [SWC](https://swc.rs/) for Fast Refresh
+## Функционал
 
-## Expanding the ESLint configuration
+- Вход по `idInstance` и `apiTokenInstance` с проверкой, что инстанс авторизован (`getStateInstance`).
+- Создание чата по номеру телефона.
+- Отправка текстовых сообщений (`sendMessage`).
+- Получение сообщений через HTTP API: `receiveNotification` + `deleteNotification`, long polling.
+- Входящий ответ попадает в чат, созданный по номеру. Сначала чат ищется по номеру отправителя, если номера нет — по `chatId`. Из уведомления подтягивается имя собеседника.
+- Чаты и сообщения сохраняются в `localStorage`. Кнопка «Выйти» очищает их вместе с кредами.
+- Адаптивная вёрстка: на мобильном показывается либо список чатов, либо открытый чат.
 
-If you are developing a production application, we recommend updating the configuration to enable type aware lint rules:
+## Как посмотреть
 
-- Configure the top-level `parserOptions` property like this:
+1. Зарегистрируйтесь в [консоли Green API](https://console.green-api.com), создайте инстанс и привяжите к нему аккаунт Telegram.
+2. В настройках инстанса включите входящие и исходящие уведомления. Поле `webhookUrl` оставьте пустым: при заданном webhook метод `receiveNotification` возвращает 400.
+3. Откройте [демо](https://whtfckv.github.io/test-react/) или запустите проект локально (см. ниже).
+4. Введите `idInstance` и `apiTokenInstance` из консоли.
+5. Нажмите «+» над списком чатов и введите номер собеседника в международном формате, например `79001234567`.
+6. Отправьте сообщение и ответьте на него со второго аккаунта. Ответ появится в том же чате, обычно в течение нескольких секунд.
 
-```js
-export default tseslint.config({
-  languageOptions: {
-    // other options...
-    parserOptions: {
-      project: ['./tsconfig.node.json', './tsconfig.app.json'],
-      tsconfigRootDir: import.meta.dirname,
-    },
-  },
-})
+## Локальный запуск
+
+Нужен Node.js 24.
+
+```bash
+npm ci
+npm run dev        # http://localhost:5173/test-react/
 ```
 
-- Replace `tseslint.configs.recommended` to `tseslint.configs.recommendedTypeChecked` or `tseslint.configs.strictTypeChecked`
-- Optionally add `...tseslint.configs.stylisticTypeChecked`
-- Install [eslint-plugin-react](https://github.com/jsx-eslint/eslint-plugin-react) and update the config:
+Проверки:
 
-```js
-// eslint.config.js
-import react from 'eslint-plugin-react'
-
-export default tseslint.config({
-  // Set the react version
-  settings: { react: { version: '18.3' } },
-  plugins: {
-    // Add the react plugin
-    react,
-  },
-  rules: {
-    // other rules...
-    // Enable its recommended rules
-    ...react.configs.recommended.rules,
-    ...react.configs['jsx-runtime'].rules,
-  },
-})
+```bash
+npm run lint       # oxlint
+npm run typecheck  # tsc
+npm test           # unit-тесты компонентов (Vitest + Testing Library)
+npm run build      # продакшен-сборка в dist/
 ```
+
+## Стек
+
+Vite, React 19, TypeScript, Mantine, TanStack Query, zustand, react-router.
+
+Маршрутизация сделана на `HashRouter` (`/#/chat/...`): GitHub Pages не отдаёт `index.html` для произвольных путей.
+
+## Структура
+
+```
+src/
+  api/greenApi.ts            запросы к Green API
+  hooks/useIncomingMessages  long polling входящих уведомлений
+  store/                     auth и чаты (zustand + persist)
+  pages/                     LoginPage, ChatsPage
+  components/                ChatList, ChatWindow, AddChatModal
+  test/                      настройка и хелперы для тестов
+```
+
+## Принятые решения
+
+- **Vite + HashRouter.** Проект публикуется на GitHub Pages как статика. Pages не умеет отдавать `index.html` на любой путь, поэтому маршруты живут после `#`, а `base` в Vite указывает на подпапку репозитория.
+- **HTTP API вместо webhook.** У статического сайта нет сервера, который мог бы принимать webhook. Поэтому уведомления забираются long polling'ом: `receiveNotification` с таймаутом 20 секунд, затем `deleteNotification`.
+- **Строго последовательный опрос.** Очередь уведомлений работает по FIFO, и каждое уведомление нужно удалить до запроса следующего, поэтому параллельные запросы здесь не подходят. Следующий шаг опроса запускается после завершения предыдущего. При размонтировании или выходе опрос отменяется через `AbortController`.
+- **Поиск чата для входящего сообщения.** Чат создаётся по номеру, а в ответе может прийти другой `chatId`. Поэтому чат ищется по цепочке: по `idMessage` своего отправленного сообщения (его возвращает уведомление `outgoingAPIMessageReceived`), по номеру отправителя, по `chatId`. Найденный `chatId` запоминается и дальше используется для отправки.
+- **Mantine.** Даёт готовые компоненты для раскладки в стиле мессенджера, тёмную тему и формы с валидацией, не требуя своей дизайн-системы.
+- **zustand + persist.** Состояние небольшое: креды и чаты. Хранилище с сохранением в `localStorage` проще, чем Redux, и переживает перезагрузку страницы.
+- **TanStack Query для мутаций.** Состояния загрузки и ошибки при входе и отправке сообщений берутся из Query, без ручных флагов.
+- **Ошибки показываются рядом с полем,** а не всплывающими уведомлениями. Пользователь видит ошибку там же, где выполнял действие.
+- **Тесты компонентов через Testing Library.** Проверяется поведение с точки зрения пользователя. API подменяется через `vi.spyOn`, реальная сеть не нужна. Линт, типы и тесты запускаются в CI до деплоя.
+
+## Что упрощено и что можно сделать дальше
+
+Упрощено:
+
+- Поддерживаются только текстовые сообщения. Медиа, стикеры и ответы на сообщения отбрасываются.
+- История чата не загружается с сервера (`getChatHistory`). В приложении видны только сообщения, отправленные и полученные с момента входа.
+- Креды хранятся в `localStorage` открытым текстом. Для тестового задания это допустимо, но в реальном приложении токен не должен оставаться в браузере.
+- Не показываются статусы сообщений: отправлено, доставлено, прочитано.
+- Если открыть несколько вкладок, они будут конкурировать за одну очередь уведомлений.
+- Повтор после ошибки опроса выполняется через фиксированную паузу 3 секунды, без экспоненциальной задержки.
+
+Что можно сделать дальше:
+
+- Загрузка истории чата и подгрузка старых сообщений при прокрутке, виртуализация длинных списков.
+- Статусы доставки и прочтения по уведомлениям `outgoingMessageStatus`.
+- Отправка и отображение медиа.
+- Синхронизация вкладок через `BroadcastChannel`, чтобы опрос вела только одна вкладка.
+- E2E-тесты на Playwright для полного сценария «вход → чат → сообщение».
+- Разделение бандла по маршрутам через `React.lazy`: сейчас он больше 500 kB.
+
+## Деплой
+
+GitHub Actions ([.github/workflows/deploy.yml](.github/workflows/deploy.yml)):
+
+- на каждый push и pull request запускаются линт, проверка типов и тесты;
+- при push в `main`, если проверки прошли, проект собирается и публикуется на GitHub Pages.
+
+В настройках репозитория должно быть выбрано: Settings → Pages → Source: **GitHub Actions**.

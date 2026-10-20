@@ -1,0 +1,7 @@
+.header {
+  border-bottom: 1px solid var(--mantine-color-default-border);
+}
+
+.messages {
+  background-color: light-dark(var(--mantine-color-gray-1), var(--mantine-color-dark-8));
+}
