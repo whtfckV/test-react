@@ -1,0 +1,17 @@
+.header {
+  border-bottom: 1px solid var(--mantine-color-default-border);
+}
+
+.item {
+  display: block;
+  width: 100%;
+  padding: var(--mantine-spacing-sm);
+
+  @mixin hover {
+    background-color: var(--mantine-color-default-hover);
+  }
+
+  &[data-active] {
+    background-color: var(--mantine-primary-color-light);
+  }
+}
